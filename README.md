@@ -1,34 +1,71 @@
 # PageHeat
 
-Week 1 results so far: [docs/week1_results.md](docs/week1_results.md) (agent_traces; LongBench-v2 in progress).
+**Page-granular KV eviction for agentic long-context serving**
 
-Week 1 implementation through the end-of-week SnapKV decision check for:
+PageHeat is a KV-cache eviction pipeline for long-context LLM inference. It is built around a simple premise: production serving systems such as vLLM allocate KV cache in fixed-size pages, but most eviction methods still score and prune at token granularity. That mismatch forces token-level heuristics to be aggregated back into pages at eviction time.
 
-- Modal smoke test on `Qwen/Qwen2.5-7B-Instruct`
-- Full-cache, StreamingLLM, and SnapKV-style baselines
-- LongBench-v2 subset evaluation harness
-- Agent-trace dataset construction
-- Plotting and reporting
+PageHeat makes eviction page-native. Instead of ranking individual tokens, it scores pages directly using cheap aggregate signals such as mean attention, attention variance, position, page age, and head-level entropy. A small learned predictor then decides which pages to retain under a KV budget, while hard-pinning sink and recent pages for stability.
 
-This repo is intentionally trimmed to the pieces needed to execute the week plan. The current implementation uses a manual greedy decode runner with pluggable KV-pruning policies and Modal-backed remote evaluation so the expensive baseline runs happen on the A100 path instead of on your MacBook Air.
+## Core thesis
 
-## Status
+Existing methods such as H2O, SnapKV, and SAGE-KV are designed around token-level importance. That is a poor fit for paged allocation systems where the real eviction unit is already a page. PageHeat treats the page as the first-class eviction unit and learns page importance directly from agentic workload traces, where cross-turn references, tool-use state, and long-horizon dependencies make naive token heuristics brittle.
 
-- The checked-in results are the Week 1 baselines in [docs/week1_results.md](/Users/HP/PageHeat/docs/week1_results.md).
-- The stronger Week 2/PageHeat claim (`96%` of full-cache accuracy at `20%` KV retention, `+8` points over SnapKV, `1.8x` decode throughput at `32K`) is **not** reproduced by checked-in artifacts in this repo yet.
-- The codebase now includes the end-to-end PageHeat design path: page-level feature collection, predictor training, page-granular eviction, and sweep configs for Week 2 evaluation. You still need to run the remote data collection, training, and sweeps to produce exact numbers.
+## Contributions
 
-## Layout
+- Page-native KV eviction designed to map cleanly onto paged attention systems without token-level bookkeeping
+- An agent-workload benchmark for KV eviction built from long multi-turn traces and tool-use conversations
+- A tiny learned page-importance predictor, roughly 500K parameters, intended to improve over SnapKV-style heuristics on agent traces while remaining competitive on standard long-context benchmarks
 
-- `pageheat_app/` core package
-- `configs/` benchmark and dataset source configs
-- `docs/week1_design.md` prefill/decode hook notes
-- `docs/week2_design.md` predictor and page-level eviction notes
-- `docs/report_template.md` 4-page writeup skeleton
-- `docs/vllm_stretch.md` bounded plan for the vLLM port
-- `modal_app.py` Modal entrypoint
-- `smoke_test.py` local smoke-test entrypoint
-- `tests/` lightweight unit tests for cache policies and metrics
+## How it works
+
+PageHeat groups cached tokens into fixed-size pages and maintains page-level features during prefill and decode. At eviction time, the model scores each page and removes the lowest-value pages until the cache fits the retention budget.
+
+The main features used by the predictor are:
+
+- mean attention received by the page
+- variance of attention across heads
+- page position and distance from the sequence end
+- page age since strong recent use
+- head-level attention entropy
+- optional key-vector norm features
+
+To reduce catastrophic mistakes, PageHeat hard-pins:
+
+- the first sink page
+- the most recent pages
+
+This preserves the core StreamingLLM stability trick while allowing the learned scorer to make the rest of the budget tradeoff.
+
+## Project scope
+
+This repository contains the pieces needed to:
+
+- run full-cache and eviction-policy baselines
+- build an agent-trace dataset for KV eviction evaluation
+- collect page-level training data
+- train a page-importance predictor
+- evaluate retention policies on long-context tasks
+- summarize and plot accuracy, throughput, latency, and memory results
+
+The current implementation is centered on a Hugging Face `transformers` pipeline with a custom cache path and Modal-backed remote execution. A direct vLLM integration is the intended serving-oriented target because vLLM already allocates KV cache in fixed-size pages.
+
+## Stack
+
+- `Qwen2.5-7B-Instruct` as the default working model target
+- Hugging Face `transformers`
+- `flash-attn` or `sdpa`, depending on environment support
+- custom cache logic in `pageheat_app/`
+- Modal for remote A100/H100 evaluation
+- stretch target: page-native integration with vLLM PagedAttention
+
+## Repo layout
+
+- `pageheat_app/`: core package for cache policies, evaluation, training, and analysis
+- `configs/`: benchmark, sweep, and dataset configs
+- `docs/`: design notes, result summaries, and reporting templates
+- `tests/`: lightweight unit tests
+- `smoke_test.py`: local smoke-test entrypoint
+- `Makefile`: common benchmark entrypoints
 
 ## Install
 
@@ -38,31 +75,33 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-`requirements.txt` is for local orchestration on your current machine.
-The Modal GPU runtime is defined directly in [pageheat_app/modal_app.py](/Users/HP/PageHeat/pageheat_app/modal_app.py).
+`requirements.txt` is intended for local orchestration, testing, and CPU-safe tooling. GPU benchmark runs are expected to use Modal.
 
-On a MacBook Air with Python 3.13, do not expect local `torch==2.4.1` + `flash-attn` to install. Use Modal for the actual Qwen smoke test and benchmark runs.
-On Modal, the image now uses `nvidia/cuda:12.4.1-devel-ubuntu22.04` to reduce `flash-attn` build failures that are common on `debian_slim`.
+## Quick start
 
-For local evaluation and dataset work, `requirements.txt` includes the CPU-safe `transformers` stack. You still should not expect local `flash-attn`.
-
-## Day 1 smoke test
-
-Local CLI wiring check:
+Check the CLI wiring:
 
 ```bash
 python smoke_test.py --help
 ```
 
-Modal:
+Run unit tests:
+
+```bash
+python -m pytest tests
+```
+
+Run the Modal smoke test:
 
 ```bash
 modal run modal_app.py
 ```
 
-If `flash-attn` fails, rerun with `--attn sdpa` and fix the image build separately.
+If `flash-attn` is unavailable in the runtime, use `sdpa` first and treat FlashAttention setup as an environment issue, not a blocker for basic validation.
 
-## Build the agent dataset
+## Main workflows
+
+Build the agent dataset:
 
 ```bash
 python -m pageheat_app.build_agent_dataset \
@@ -70,31 +109,14 @@ python -m pageheat_app.build_agent_dataset \
   --output-dir artifacts/data/agent_traces
 ```
 
-The default agent dataset config now uses three public sources that are directly fetchable:
-
-- `sierra-research/tau-bench` historical airline trajectories from GitHub
-- `sierra-research/tau-bench` historical retail trajectories from GitHub
-- BFCL V3 multi-turn `miss_param` data from Hugging Face raw JSONL
-
-Quality checks:
+Run dataset QC:
 
 ```bash
 python -m pageheat_app.dataset_qc \
   --dataset-dir artifacts/data/agent_traces
 ```
 
-The QC output now includes source counts, task counts, duplicate prompts, and an explicit contamination note. It does not claim to prove absence of pretraining contamination, because that cannot be determined reliably from public benchmark artifacts alone.
-
-## Run baselines
-
-Benchmark choice:
-
-- The repo now targets the newer LongBench-v2 benchmark.
-- LongBench-v2 uses a multiple-choice schema rather than free-form generation targets.
-- The current default subsets are `government_single`, `government_multi`, and `dialogue_history_qa`.
-- These subset names come from the public `recursal/longbench-v2` mirror of the December 2024 LongBench-v2 release, while the official dataset card documents the shared LongBench-v2 schema and loading path.
-
-Full cache:
+Run a single evaluation:
 
 ```bash
 python -m pageheat_app.remote_eval eval \
@@ -104,64 +126,13 @@ python -m pageheat_app.remote_eval eval \
   --max-samples 100
 ```
 
-StreamingLLM:
-
-```bash
-python -m pageheat_app.remote_eval eval \
-  --dataset longbench_v2_government_multi \
-  --cache-policy streamingllm \
-  --attn-implementation sdpa \
-  --retention-rate 0.2
-```
-
-SnapKV-style:
-
-```bash
-python -m pageheat_app.remote_eval eval \
-  --dataset agent_traces \
-  --cache-policy snapkv \
-  --attn-implementation sdpa \
-  --retention-rate 0.1
-```
-
-Sweep the LongBench-v2-only matrix:
+Run a sweep:
 
 ```bash
 python -m pageheat_app.remote_eval sweep \
-  --config configs/longbench_tasks.yaml \
+  --config configs/week2_matrix.yaml \
   --attn-implementation sdpa
 ```
-
-Sweep the full Week 1 matrix, including `agent_traces` for the final decision:
-
-```bash
-python -m pageheat_app.remote_eval sweep \
-  --config configs/week1_matrix.yaml \
-  --attn-implementation sdpa
-```
-
-End-of-week decision check:
-
-```bash
-python -m pageheat_app.decision_check \
-  --results-dir artifacts/results/<your_run_dir>
-```
-
-All-in-one Week 1 path:
-
-```bash
-python -m pageheat_app.week1_runbook
-```
-
-## Plot results
-
-```bash
-python -m pageheat_app.plot_results \
-  --results-dir artifacts/results/<your_run_dir> \
-  --output artifacts/plots/week1_accuracy_vs_retention.png
-```
-
-## Train and evaluate PageHeat
 
 Collect page-level training data:
 
@@ -173,7 +144,7 @@ python -m pageheat_app.remote_collect_pageheat_data \
   --output artifacts/data/pageheat/pageheat_train.pt
 ```
 
-Train a roughly 500K-parameter predictor:
+Train the predictor:
 
 ```bash
 python -m pageheat_app.train_pageheat_predictor \
@@ -184,7 +155,7 @@ python -m pageheat_app.train_pageheat_predictor \
   --output artifacts/models/pageheat_predictor_500k.pt
 ```
 
-Evaluate the Week 2 sweep:
+Evaluate with the trained predictor:
 
 ```bash
 python -m pageheat_app.remote_eval sweep \
@@ -192,69 +163,46 @@ python -m pageheat_app.remote_eval sweep \
   --pageheat-predictor-path artifacts/models/pageheat_predictor_500k.pt
 ```
 
-## Week 3 local pipeline
-
-Run the Week 3 expansion sweep locally:
+Plot results:
 
 ```bash
-python3 -m pageheat_app.week3_runbook \
-  --config configs/week3_eval_expansion.yaml \
-  --pageheat-predictor-path artifacts/models/pageheat_predictor_500k.pt
-```
-
-This writes:
-
-- `summary.json` inside the generated sweep run directory
-- `week3_summary.json` with headline accuracy/throughput deltas
-- `week3_failure_analysis.json` with PageHeat-vs-SnapKV regressions
-- an accuracy-vs-retention plot under `artifacts/plots/`
-
-Compact failure-debugging slice:
-
-```bash
-python3 -m pageheat_app.week3_runbook \
-  --config configs/week3_failure_slice.yaml \
-  --pageheat-predictor-path artifacts/models/pageheat_predictor_500k.pt
-```
-
-Standalone summaries:
-
-```bash
-python3 -m pageheat_app.summarize_results \
+python -m pageheat_app.plot_results \
   --results-dir artifacts/results/<your_run_dir> \
-  --format markdown
+  --output artifacts/plots/pageheat_accuracy_vs_retention.png
 ```
 
-```bash
-python3 -m pageheat_app.failure_analysis \
-  --results-dir artifacts/results/<your_run_dir> \
-  --dataset agent_traces \
-  --format markdown
-```
+## Evaluation focus
 
-Needle benchmark dataset names are built into the harness:
+The intended evaluation dimensions are:
 
-- `needle_32k`
-- `needle_64k`
+- accuracy under KV retention budgets such as 10%, 20%, and 50%
+- decode throughput
+- time to first token
+- peak GPU memory
+- robustness on both standard long-context tasks and agentic multi-turn workloads
 
-They generate synthetic retrieval prompts locally, so no dataset download is required for those runs.
+The main claim this repo is structured to test is not that PageHeat must dominate every generic benchmark. The stronger claim is that page-native eviction is a better fit for serving systems and that agentic workloads expose weaknesses in existing token-native heuristics.
 
-## Single-command benchmark
+## Current positioning
 
-```bash
-make week3-benchmark PREDICTOR=artifacts/models/pageheat_predictor_500k.pt
-```
+PageHeat is designed as a practical research prototype:
 
-## What to check
+- simple enough to train and iterate on quickly
+- aligned with real paged serving systems
+- targeted at long-context agent workloads rather than only static QA benchmarks
 
-1. `python -m pytest tests` passes.
-2. `python smoke_test.py --help` works locally.
-3. `modal run modal_app.py` loads and generates 50 tokens remotely.
-4. `python -m pageheat_app.remote_eval eval ... --cache-policy full` produces metrics JSON with `accuracy`, `ttft_s`, `decode_tokens_per_s`, and `peak_memory_gb`.
-5. `streamingllm` and `snapkv` runs both emit lower retained KV lengths than full cache in the saved trace.
-6. `python -m pageheat_app.build_agent_dataset ...` writes a local Hugging Face dataset with split stats.
-7. `python -m pageheat_app.decision_check --results-dir ...` emits either `gap_exists` or `pivot_or_refine_benchmark`.
+This makes it relevant to teams working on production inference stacks where KV-cache efficiency, throughput, and memory pressure matter directly.
 
-## Important caveat
+## Docs
 
-The `snapkv` policy here is a port-ready baseline scaffold driven by observed attention maps during manual decoding. It is built to let you compare retention policies end-to-end now. If you want strict parity with the official SnapKV repository, replace the scoring logic in `pageheat_app/cache_policies.py` with the exact cluster selection routine after you finish day 2 source reading.
+- [Week 1 results](docs/week1_results.md)
+- [Week 1 design](docs/week1_design.md)
+- [Week 2 design](docs/week2_design.md)
+- [vLLM stretch plan](docs/vllm_stretch.md)
+- [Report template](docs/report_template.md)
+
+## Limitations
+
+- The current codebase is research-oriented and not yet a polished production serving integration
+- Exact parity with external baselines such as official SnapKV implementations should not be assumed without side-by-side verification
+- The strongest value of the approach depends on the agent-workload setting being measured honestly alongside standard benchmarks
