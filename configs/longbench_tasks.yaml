@@ -1,0 +1,19 @@
+datasets:
+  - longbench_v2_government_single
+  - longbench_v2_government_multi
+  - longbench_v2_dialogue_history_qa
+retention_rates:
+  - 0.1
+  - 0.2
+  - 0.5
+cache_policies:
+  - full
+  - streamingllm
+  - snapkv
+max_samples: 100
+max_new_tokens: 16
+max_prompt_tokens: 6000
+notes:
+  - "These task names target LongBench-v2 subsets using the multiple-choice benchmark schema."
+  - "Subset names are sourced from the public recursal/longbench-v2 mirror of the December 2024 LongBench-v2 release."
+  - "Prompts are truncated to 6000 tokens so Qwen2.5-7B full-cache runs fit on a single A100-40GB."

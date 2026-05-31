@@ -1,0 +1,51 @@
+datasets:
+  - longbench_narrativeqa
+  - longbench_hotpotqa
+  - longbench_gov_report
+  - longbench_multifieldqa_en
+  - longbench_musique
+  - longbench_qasper
+  - longbench_2wikimqa
+  - longbench_triviaqa
+  - longbench_passage_retrieval_en
+  - longbench_lcc
+  - agent_traces
+  - needle_32k
+  - needle_64k
+experiments:
+  - name: full
+    cache_policy: full
+    retention_rate: 1.0
+  - name: streamingllm_r0.1
+    cache_policy: streamingllm
+    retention_rate: 0.1
+  - name: streamingllm_r0.2
+    cache_policy: streamingllm
+    retention_rate: 0.2
+  - name: streamingllm_r0.5
+    cache_policy: streamingllm
+    retention_rate: 0.5
+  - name: snapkv_r0.1
+    cache_policy: snapkv
+    retention_rate: 0.1
+  - name: snapkv_r0.2
+    cache_policy: snapkv
+    retention_rate: 0.2
+  - name: snapkv_r0.5
+    cache_policy: snapkv
+    retention_rate: 0.5
+  - name: pageheat_r0.1
+    cache_policy: pageheat
+    retention_rate: 0.1
+  - name: pageheat_r0.2
+    cache_policy: pageheat
+    retention_rate: 0.2
+  - name: pageheat_r0.5
+    cache_policy: pageheat
+    retention_rate: 0.5
+max_samples: 100
+max_new_tokens: 32
+max_prompt_tokens: 32000
+notes:
+  - "Week 3 expansion: broader LongBench coverage, agent traces, and synthetic needle retrieval at long context."
+  - "For needle_64k, override --max-prompt-tokens 64000 if the hardware budget allows it."

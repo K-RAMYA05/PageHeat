@@ -1,0 +1,19 @@
+datasets:
+  - agent_traces
+  - needle_32k
+  - needle_64k
+experiments:
+  - name: full
+    cache_policy: full
+    retention_rate: 1.0
+  - name: snapkv_r0.2
+    cache_policy: snapkv
+    retention_rate: 0.2
+  - name: pageheat_r0.2
+    cache_policy: pageheat
+    retention_rate: 0.2
+max_samples: 100
+max_new_tokens: 32
+max_prompt_tokens: 32000
+notes:
+  - "Compact Week 3 slice for failure analysis and debugging before the full expansion sweep."

@@ -1,0 +1,36 @@
+datasets:
+  - agent_traces
+  - longbench_v2_dialogue_history_qa
+experiments:
+  - name: full
+    cache_policy: full
+    retention_rate: 1.0
+  - name: snapkv_r0.2
+    cache_policy: snapkv
+    retention_rate: 0.2
+  - name: pageheat_default_r0.2
+    cache_policy: pageheat
+    retention_rate: 0.2
+  - name: pageheat_no_sink_pin_r0.2
+    cache_policy: pageheat
+    retention_rate: 0.2
+    pin_sink_page: false
+    pin_recent_pages: 2
+  - name: pageheat_page8_r0.2
+    cache_policy: pageheat
+    retention_rate: 0.2
+    page_size: 8
+  - name: pageheat_page16_r0.2
+    cache_policy: pageheat
+    retention_rate: 0.2
+    page_size: 16
+  - name: pageheat_page32_r0.2
+    cache_policy: pageheat
+    retention_rate: 0.2
+    page_size: 32
+max_samples: 100
+max_new_tokens: 16
+max_prompt_tokens: 6000
+notes:
+  - "Use predictor checkpoints trained with different feature sets or model types and pass them via --pageheat-predictor-path for the logistic vs MLP and no-key-norm ablations."
+  - "This config covers structural ablations directly in the sweep layer: sink pinning and page size."

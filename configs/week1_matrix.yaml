@@ -1,0 +1,21 @@
+datasets:
+  - longbench_v2_government_single
+  - longbench_v2_government_multi
+  - longbench_v2_dialogue_history_qa
+  - agent_traces
+retention_rates:
+  - 0.1
+  - 0.2
+  - 0.5
+cache_policies:
+  - full
+  - streamingllm
+  - snapkv
+max_samples: 100
+max_new_tokens: 16
+max_prompt_tokens: 6000
+notes:
+  - "The LongBench portion of Week 1 now targets LongBench-v2 subset names and its multiple-choice evaluation format."
+  - "Subset names are sourced from the public recursal/longbench-v2 mirror of the December 2024 LongBench-v2 release."
+  - "LongBench-v2 prompts are truncated to 6000 tokens so Qwen2.5-7B full-cache runs fit on a single A100-40GB."
+  - "agent_traces is the locally built Week 1 benchmark used for the SnapKV decision check."

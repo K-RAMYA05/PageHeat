@@ -1,0 +1,25 @@
+sources:
+  - name: tau_bench_airline
+    type: json_url
+    url: https://raw.githubusercontent.com/sierra-research/tau-bench/main/historical_trajectories/gpt-4o-airline.json
+    format: json
+    extractor: tau_bench_pairs
+    task: tool_use
+    metric: token_f1
+    max_samples: 100
+  - name: tau_bench_retail
+    type: json_url
+    url: https://raw.githubusercontent.com/sierra-research/tau-bench/main/historical_trajectories/gpt-4o-retail.json
+    format: json
+    extractor: tau_bench_pairs
+    task: tool_use
+    metric: token_f1
+    max_samples: 100
+  - name: bfcl_multi_turn
+    type: json_url
+    url: https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard/raw/main/BFCL_v3_multi_turn_miss_param.json
+    format: jsonl
+    extractor: bfcl_pairs
+    task: function_call
+    metric: exact_match
+    max_samples: 100

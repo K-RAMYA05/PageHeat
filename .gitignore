@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pkl
+*.pt
+*.bin
+*.log
+.env
+.venv/
+venv/
+.pytest_cache/
+artifacts/

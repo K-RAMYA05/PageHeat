@@ -1,0 +1,42 @@
+datasets:
+  - longbench_v2_government_single
+  - longbench_v2_government_multi
+  - longbench_v2_dialogue_history_qa
+  - agent_traces
+experiments:
+  - name: full
+    cache_policy: full
+    retention_rate: 1.0
+  - name: streamingllm_r0.1
+    cache_policy: streamingllm
+    retention_rate: 0.1
+  - name: streamingllm_r0.2
+    cache_policy: streamingllm
+    retention_rate: 0.2
+  - name: streamingllm_r0.5
+    cache_policy: streamingllm
+    retention_rate: 0.5
+  - name: snapkv_r0.1
+    cache_policy: snapkv
+    retention_rate: 0.1
+  - name: snapkv_r0.2
+    cache_policy: snapkv
+    retention_rate: 0.2
+  - name: snapkv_r0.5
+    cache_policy: snapkv
+    retention_rate: 0.5
+  - name: pageheat_r0.1
+    cache_policy: pageheat
+    retention_rate: 0.1
+  - name: pageheat_r0.2
+    cache_policy: pageheat
+    retention_rate: 0.2
+  - name: pageheat_r0.5
+    cache_policy: pageheat
+    retention_rate: 0.5
+max_samples: 100
+max_new_tokens: 16
+max_prompt_tokens: 6000
+notes:
+  - "Pass --pageheat-predictor-path on the sweep CLI to evaluate the trained PageHeat model."
+  - "PageHeat and SnapKV default to eager attention because this stack requires materialized attentions."
